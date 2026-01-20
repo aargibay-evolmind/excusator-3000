@@ -1,0 +1,62 @@
+services:
+  # Backend PHP Service
+  backend_php:
+    build: ./docker/php
+    volumes:
+      - ./backend:/home/dev/code
+    depends_on:
+      - backend_db
+    networks:
+      - default
+
+  # Backend Nginx Service
+  backend_nginx:
+    build: ./docker/nginx-backend
+    volumes:
+      - ./backend:/home/dev/code
+    depends_on:
+      - backend_php
+    labels:
+      - "traefik.enable=true"
+      # HTTP Router
+      - "traefik.http.routers.backend_http.rule=Host(`back.executor.local`)"
+      - "traefik.http.routers.backend_http.entrypoints=http"
+      # Service Port
+      - "traefik.http.services.backend_http.loadbalancer.server.port=80"
+    networks:
+      - default
+
+  # Database Service
+  backend_db:
+    build: ./docker/mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=secret
+      - MYSQL_DATABASE=excusator
+    volumes:
+      - db_volume:/var/lib/mysql
+    networks:
+      - default
+
+  # Frontend Node Service
+  frontend_node:
+    build: ./docker/frontend
+    volumes:
+      - ./frontend:/home/dev/code
+    labels:
+      - "traefik.enable=true"
+      # HTTP Router
+      - "traefik.http.routers.frontend_http.rule=Host(`front.executor.local`)"
+      - "traefik.http.routers.frontend_http.entrypoints=http"
+      # Service Port (Vite default)
+      - "traefik.http.services.frontend_http.loadbalancer.server.port=5173"
+    networks:
+      - default
+
+volumes:
+  db_volume:
+
+networks:
+  default:
+    external: true
+    name: traefik
