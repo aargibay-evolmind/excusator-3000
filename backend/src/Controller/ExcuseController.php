@@ -6,7 +6,7 @@ namespace App\Controller;
 
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 
 #[Route('/api', name: 'api_')]
 class ExcuseController extends AbstractController
@@ -30,7 +30,7 @@ class ExcuseController extends AbstractController
         // Simple logic for now: return a static string based on ID, 
         // or a default one if ID is out of range.
         // In a real app, this would fetch from DB based on "type" (id).
-        
+
         $text = self::EXCUSES[$id] ?? 'No tengo excusa para eso...';
 
         return new JsonResponse([
