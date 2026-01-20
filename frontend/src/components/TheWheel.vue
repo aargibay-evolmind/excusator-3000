@@ -1,43 +1,68 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 const emit = defineEmits<{
   (e: 'result', text: string): void
 }>()
 
 const isSpinning = ref(false)
-const activeSegment = ref<number>(1) // 1-10
-const totalSegments = 10
+const activeSegment = ref<number>(1)
+const categories = ref<Array<{id: number, name: string}>>([])
+const loading = ref(true)
+const error = ref('')
 
 // Colors from the wheel image (approx)
-const colors = [
+const allColors = [
   '#FF5733', '#FFBD33', '#DBFF33', '#75FF33', '#33FF57', 
-  '#33FFBD', '#33DBFF', '#3375FF', '#5733FF', '#BD33FF'
+  '#33FFBD', '#33DBFF', '#3375FF', '#5733FF', '#BD33FF',
+  '#FF33A8', '#FF336E', '#A833FF', '#33FFA8', '#FF8F33'
 ]
 
+onMounted(async () => {
+  try {
+    const res = await fetch('http://back.executor.local/api/categories')
+    if (!res.ok) {
+        if (res.status === 400) {
+            error.value = "No hay suficientes categorías activas (min 5)."
+        } else {
+            error.value = "Error cargando categorías."
+        }
+        return
+    }
+    categories.value = await res.json()
+  } catch (e) {
+    console.error(e)
+    error.value = "Error de conexión con el servidor."
+  } finally {
+    loading.value = false
+  }
+})
+
+const totalSegments = computed(() => categories.value.length)
+const segmentAngle = computed(() => 360 / (totalSegments.value || 1))
+const skewAngle = computed(() => (90 - segmentAngle.value) * -1) // Negative
+const labelRotate = computed(() => segmentAngle.value / 2) // Center text in wedge
+
 const spinWheel = async () => {
-  if (isSpinning.value) return 
+  if (isSpinning.value || loading.value || error.value) return 
   isSpinning.value = true
   
   // Animation parameters
-  let speed = 50 // Initial speed (ms per step)
+  let speed = 50 
   let steps = 0
-  const minSteps = 40 // ~4 seconds at fast speed + deceleration
-  const maxSpeed = 300 // Max slow speed
+  const minSteps = 40 
+  const maxSpeed = 300 
   
-  // Keep spinning fast first
   const spinInterval = async () => {
-    activeSegment.value = (activeSegment.value % totalSegments) + 1
+    activeSegment.value = (activeSegment.value % totalSegments.value) + 1
     steps++
 
     if (steps < minSteps) {
       setTimeout(spinInterval, speed)
     } else if (speed < maxSpeed) {
-       // Decelerate
        speed *= 1.1
        setTimeout(spinInterval, speed)
     } else {
-       // Stop
        stopWheel()
     }
   }
@@ -46,16 +71,27 @@ const spinWheel = async () => {
 }
 
 const stopWheel = async () => {
-  // We stopped at activeSegment.value
-  const segmentId = activeSegment.value
+  const segmentIndex = activeSegment.value - 1 // 0-based
+  const category = categories.value[segmentIndex]
   
+  if (!category) {
+      emit('result', "Error: Categoría no encontrada")
+      isSpinning.value = false
+      return
+  }
+
   try {
-    const response = await fetch(`http://back.executor.local/api/excuse/${segmentId}`)
+    const response = await fetch(`http://back.executor.local/api/excuse?category_id=${category.id}`)
     const data = await response.json()
-    emit('result', data.text)
+    if (data.error) {
+        emit('result', data.error)
+    } else {
+        // Prepend Category Name for context
+        emit('result', `[${category.name}] ${data.content}`)
+    }
   } catch (e) {
     console.error(e)
-    emit('result', "Error obteniendo excusa (¿Backend caído?)")
+    emit('result', "Error obteniendo excusa")
   } finally {
     isSpinning.value = false
   }
@@ -64,20 +100,23 @@ const stopWheel = async () => {
 
 <template>
   <div class="wheel-container">
-    <div class="wheel">
+    <div v-if="loading">Cargando categorías...</div>
+    <div v-else-if="error" class="error">{{ error }}</div>
+    
+    <div v-else class="wheel" :style="{ '--segment-angle': segmentAngle + 'deg', '--skew-angle': skewAngle + 'deg', '--label-rotate': labelRotate + 'deg' }">
       <div 
-        v-for="n in 10" 
-        :key="n"
+        v-for="(cat, index) in categories" 
+        :key="cat.id"
         class="segment"
-        :class="{ active: activeSegment === n }"
+        :class="{ active: activeSegment === index + 1 }"
         :style="{ 
-          '--i': n, 
-          '--color': colors[n-1] 
+          '--i': index + 1, 
+          '--color': allColors[index % allColors.length] 
         }"
       >
-        <span>{{ n }}</span>
+        <span>{{ index + 1 }}</span>
       </div>
-      <div class="center-btn" @click="spinWheel">
+      <div class="center-btn" @click="spinWheel" :class="{ disabled: isSpinning }">
         {{ isSpinning ? '...' : 'Dame una excusa' }}
       </div>
     </div>
@@ -90,6 +129,13 @@ const stopWheel = async () => {
   justify-content: center;
   align-items: center;
   height: 500px;
+  flex-direction: column;
+}
+
+.error {
+    color: red;
+    font-weight: bold;
+    font-size: 1.2rem;
 }
 
 .wheel {
@@ -123,21 +169,25 @@ const stopWheel = async () => {
   transition: transform 0.1s;
 }
 
-.center-btn:active {
+.center-btn:active:not(.disabled) {
   transform: translate(-50%, -50%) scale(0.95);
 }
 
+.center-btn.disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
 .segment {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 50%;
-  height: 50%;
-  transform-origin: 0% 100%;
-  transform: rotate(calc((var(--i) - 1) * 36deg)) skewY(54deg); /* 360/10 = 36deg */
-  border: 1px solid rgba(0,0,0,0.1);
-  background: #ddd; /* Default inactive color */
-  transition: background 0.1s, filter 0.1s;
+   position: absolute;
+   top: 0; right: 0;
+   width: 50%; height: 50%;
+   transform-origin: 0% 100%;
+   transform: rotate(calc((var(--i) - 1) * var(--segment-angle))) skewY(var(--skew-angle));
+   overflow: hidden;
+   border: 1px solid rgba(0,0,0,0.1);
+   background: #ddd;
+   transition: background 0.1s;
 }
 
 .segment.active {
@@ -147,53 +197,9 @@ const stopWheel = async () => {
   border: none;
 }
 
-/* Fix CSS shape mapping logic: 
-   Conic gradient is easier for full pie chart, 
-   but specific highlighting is easier with rotated divs. 
-   Using this CSS clip-path or transform approach needs care.
-   To make standard pie slices, we need:
-   rotate( (i-1)*36 deg )
-   skewY( -54 deg ) to make a 36deg slice (90 - 36 = 54)
-*/
-
-.segment {
-  left: 50%;
-  top: 50%;
-  width: 50%;
-  height: 50%;
-  transform-origin: 0 0;
-  transform: rotate(calc((var(--i) - 1) * 36deg - 90deg + 18deg)) skewY(-54deg);
-  /* -90 to start at top. +18 to center segment? 
-     Let's try a standard conic gradient approach instead?
-     No, div approach is better for individual highlighting.
-  */
-  margin-top: -1px; /* Remove gaps */
-}
-
-/* Re-adjusting transform for correct 10-slice pie */
-/* Each slice is 36deg.
-   We want slice 1 at TOP (12 o'clock).
-   36deg / 2 = 18deg offset if we want the center of the slice at top.
-   But user said "Next in clockwise".
-   Slice 1: Top (centered around -90deg?).
-   Let's stick to simple rotation.
-*/
-.segment {
-   /* Reset generic styles for the specific approach */
-   position: absolute;
-   top: 0; right: 0;
-   width: 50%; height: 50%;
-   transform-origin: 0% 100%;
-   /* We want 36deg slices. */
-   /* skewY(90 - 36) = 54deg */
-   transform: rotate(calc((var(--i) - 1) * 36deg)) skewY(-54deg);
-   overflow: hidden;
-   /* The content (number) needs counter-rotation so it's not skewed */
-}
-
 .segment span {
     display: block;
-    transform: skewY(54deg) rotate(18deg); /* Counter skew + align */
+    transform: skewY(calc(var(--skew-angle) * -1)) rotate(var(--label-rotate));
     position: absolute;
     bottom: 20px;
     left: 20px;
@@ -207,5 +213,4 @@ const stopWheel = async () => {
     color: white;
     text-shadow: 1px 1px 2px black;
 }
-
 </style>

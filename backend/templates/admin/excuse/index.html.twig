@@ -1,0 +1,46 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Excuse index{% endblock %}
+
+{% block body %}
+    <h1>Excuse index</h1>
+
+    <a href="{{ path('admin_excuse_new') }}">Create new</a>
+
+    <table border="1" style="width:100%; margin-top: 20px;">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Content</th>
+                <th>Category</th>
+                <th>DeletedAt</th>
+                <th>actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for excuse in excuses %}
+            <tr>
+                <td>{{ excuse.id }}</td>
+                <td>{{ excuse.content }}</td>
+                <td>{{ excuse.category ? excuse.category.name : 'N/A' }}</td>
+                <td>{{ excuse.deletedAt ? excuse.deletedAt|date('Y-m-d H:i:s') : '' }}</td>
+                <td>
+                    <a href="{{ path('admin_excuse_edit', {'id': excuse.id}) }}">Edit</a>
+                    {% if excuse.deletedAt is null %}
+                        <form method="post" action="{{ path('admin_excuse_delete', {'id': excuse.id}) }}" onsubmit="return confirm('Are you sure you want to delete this item?');" style="display: inline-block;">
+                            <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ excuse.id) }}">
+                            <button class="btn">Delete</button>
+                        </form>
+                    {% else %}
+                        (Deleted)
+                    {% endif %}
+                </td>
+            </tr>
+        {% else %}
+            <tr>
+                <td colspan="5">no records found</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}
