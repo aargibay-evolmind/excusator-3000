@@ -15,7 +15,7 @@ class ListExcuseController extends AbstractController
     public function __invoke(ExcuseRepository $excuseRepository): Response
     {
         return $this->render('admin/excuse/index.html.twig', [
-            'excuses' => $excuseRepository->findAll(),
+            'excuses' => $excuseRepository->findBy(['deletedAt' => null]),
         ]);
     }
 }
