@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 
 const emit = defineEmits<{
   (e: 'result', text: string): void
 }>()
 
+const authStore = useAuthStore()
 const isSpinning = ref(false)
 const activeSegment = ref<number>(1)
 const categories = ref<Array<{id: number, name: string}>>([])
@@ -20,7 +22,11 @@ const allColors = [
 
 onMounted(async () => {
   try {
-    const res = await fetch('http://back.executor.local/api/categories')
+    const res = await fetch('http://back.executor.local/api/categories', {
+      headers: {
+        'Authorization': authStore.getAuthHeader(),
+      },
+    })
     if (!res.ok) {
         if (res.status === 400) {
             error.value = "No hay suficientes categorías activas (min 5)."
@@ -81,7 +87,11 @@ const stopWheel = async () => {
   }
 
   try {
-    const response = await fetch(`http://back.executor.local/api/excuse?category_id=${category.id}`)
+    const response = await fetch(`http://back.executor.local/api/excuse?category_id=${category.id}`, {
+      headers: {
+        'Authorization': authStore.getAuthHeader(),
+      },
+    })
     const data = await response.json()
     if (data.error) {
         emit('result', data.error)
